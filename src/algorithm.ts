@@ -56,8 +56,23 @@ export function toBucketSets(buckets: BucketMap): Array<Set<Flashcard>> {
 export function getBucketRange(
   buckets: Array<Set<Flashcard>>
 ): { minBucket: number; maxBucket: number } | undefined {
-  // TODO: Implement this function
-  throw new Error("Implement me!");
+  let minBucket: number | undefined;
+  let maxBucket: number | undefined;
+
+  for (let i = 0; i < buckets.length; i++) {
+    if ((buckets[i] ?? new Set<Flashcard>()).size > 0) {
+      if (minBucket === undefined || i < minBucket) {
+        minBucket = i;
+      }
+      if (maxBucket === undefined || i > maxBucket) {
+        maxBucket = i;
+      }
+    }
+  }
+
+  return minBucket !== undefined && maxBucket !== undefined 
+    ? { minBucket, maxBucket } 
+    : undefined;
 }
 
 /**
@@ -73,8 +88,16 @@ export function practice(
   buckets: Array<Set<Flashcard>>,
   day: number
 ): Set<Flashcard> {
-  // TODO: Implement this function
-  throw new Error("Implement me!");
+  const practiceCards = new Set<Flashcard>();
+  const dayNumber = day + 1; // Convert to 1-based index
+
+  for (let bucketIndex = 0; bucketIndex < buckets.length; bucketIndex++) {
+    if (buckets[bucketIndex] && dayNumber % Math.pow(2, bucketIndex) === 0) {
+      (buckets[bucketIndex] ?? new Set<Flashcard>()).forEach(card => practiceCards.add(card));
+    }
+  }
+
+  return practiceCards;
 }
 
 /**
@@ -91,8 +114,52 @@ export function update(
   card: Flashcard,
   difficulty: AnswerDifficulty
 ): BucketMap {
-  // TODO: Implement this function
-  throw new Error("Implement me!");
+  // Create a new Map to maintain immutability
+  const newBuckets = new Map(buckets);
+  let currentBucket: number | undefined;
+
+  // Find which bucket the card is currently in
+  for (const [bucketNum, cards] of newBuckets.entries()) {
+    if (cards.has(card)) {
+      currentBucket = bucketNum;
+      break;
+    }
+  }
+
+  // If card wasn't found, return unchanged
+  if (currentBucket === undefined) {
+    return newBuckets;
+  }
+
+  // Remove card from current bucket
+  const currentCards = newBuckets.get(currentBucket)!;
+  currentCards.delete(card);
+  if (currentCards.size === 0) {
+    newBuckets.delete(currentBucket);
+  }
+
+  // Determine new bucket based on difficulty
+  let newBucket: number;
+  switch (difficulty) {
+    case AnswerDifficulty.Easy:
+      newBucket = currentBucket + 1;
+      break;
+    case AnswerDifficulty.Hard:
+      newBucket = Math.max(0, currentBucket - 1);
+      break;
+    case AnswerDifficulty.Wrong:
+      newBucket = 0;
+      break;
+    default:
+      newBucket = currentBucket;
+  }
+
+  // Add card to new bucket
+  const newCards = newBuckets.get(newBucket) || new Set<Flashcard>();
+  newCards.add(card);
+  newBuckets.set(newBucket, newCards);
+
+  return newBuckets;
 }
 
 /**
@@ -103,8 +170,16 @@ export function update(
  * @spec.requires card is a valid Flashcard.
  */
 export function getHint(card: Flashcard): string {
-  // TODO: Implement this function (and strengthen the spec!)
-  throw new Error("Implement me!");
+  if (!card.front || card.front.length === 0) {
+    return "";
+  }
+
+  // Show first half (rounded up) of the front text
+  const hintLength = Math.ceil(card.front.length / 2);
+  const shown = card.front.substring(0, hintLength);
+  const hidden = "_".repeat(card.front.length - hintLength);
+
+  return shown + hidden;
 }
 
 /**
@@ -116,7 +191,43 @@ export function getHint(card: Flashcard): string {
  * @spec.requires [SPEC TO BE DEFINED]
  */
 export function computeProgress(buckets: any, history: any): any {
-  // Replace 'any' with appropriate types
-  // TODO: Implement this function (and define the spec!)
-  throw new Error("Implement me!");
+  // Count total cards and cards per bucket
+  let totalCards = 0;
+  const cardsByBucket = new Map<number, number>();
+  for (const [bucket, cards] of buckets.entries()) {
+    const count = cards.size;
+    totalCards += count;
+    cardsByBucket.set(bucket, count);
+  }
+
+  // Calculate success rate (Easy/Hard count as success)
+  let successCount = 0;
+  for (const entry of history) {
+    if (entry.difficulty === AnswerDifficulty.Easy || 
+        entry.difficulty === AnswerDifficulty.Hard) {
+      successCount++;
+    }
+  }
+  const successRate = history.length > 0 ? successCount / history.length : 0;
+
+  // Find hardest cards (most frequently answered Wrong)
+  const wrongCounts = new Map<Flashcard, number>();
+  for (const entry of history) {
+    if (entry.difficulty === AnswerDifficulty.Wrong) {
+      const count = wrongCounts.get(entry.card) || 0;
+      wrongCounts.set(entry.card, count + 1);
+    }
+  }
+
+  const hardestCards = Array.from(wrongCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3) // Top 3 hardest cards
+    .map(([card]) => card);
+
+  return {
+    totalCards,
+    cardsByBucket,
+    successRate,
+    hardestCards,
+  };
 }
